@@ -1,0 +1,10 @@
+{
+  "name" : "vim-async-beans",
+  "version" : "0.1",
+  "author" : "Jeanluc Chasseriau <jeanluc@lo.cx>",
+  "maintainer" : "Jeanluc Chasseriau <jeanluc@lo.cx>",
+  "repository" : {"type": "git", "url": "git://github.com/jlc/vim-async-beans.git", "branch" : "master"},
+  "dependencies" : {
+  },
+  "description" : "vim async based on netbeans protocol"
+}
