@@ -20,6 +20,7 @@ endif
 
 let g:abeans['addon-dir'] = get(g:abeans, 'addon-dir', expand('<sfile>:h:h'))
 let g:abeans['ctxs'] = get(g:abeans, 'ctxs', {})
+let g:abeans['connected'] = get(g:abeans, 'connected', 0)
 
 python << endpython
 import vim
@@ -100,10 +101,26 @@ def parse(line):
 
   ablog().error("parse: unmatched line: '%s'" % (line))
 
+# updateBuffer()
+# update given buffer by executing given function
+# take care of setting buffer options
+def updateBuffer(id, f):
+  preCmds = [
+    "buffer %d" % (id),
+    "setlocal modifiable",
+  ]
+  postCmds = [
+    "setlocal nomodifiable",
+    "buffer %d" % (vim.current.buffer.number)
+  ]
+  vim.command("\n".join(preCmds))
+  f()
+  vim.command("\n".join(postCmds))
+
 @CatchAndLogException
 def send(data):
-  id = VIM_BUFFER_OUT_ID - 1 # array index start at 0
-  vim.buffers[id].append(data)
+  doSend = lambda: vim.buffers[VIM_BUFFER_OUT_ID - 1].append(data)
+  updateBuffer(VIM_BUFFER_OUT_ID, doSend)
 
 @CatchAndLogException
 def startExec(cmd):
@@ -119,8 +136,12 @@ def processInput():
   id = VIM_BUFFER_IN_ID - 1 # array index start at 0
   lines = []
   lines.extend(vim.buffers[id])
-  for i in range(len(vim.buffers[id])):
-    del vim.buffers[id][i]
+
+  def clear():
+    for i in range(len(vim.buffers[id])):
+      del vim.buffers[id][i]
+
+  updateBuffer(VIM_BUFFER_IN_ID, clear)
 
   for line in lines:
     ablog().debug("processInput: parsing: '%s'", line)
@@ -145,11 +166,15 @@ def findBuffers():
 _processInput = findBuffers
 
 def setBufferOptions(id):
+  options = [
+    "buftype=nofile",
+    "bufhidden=hide",
+    "noswapfile",
+    "nobuflisted",
+    "nomodifiable"
+  ]
   vim.command("buffer %d" % (id))
-  vim.command("setlocal buftype=nofile")
-  vim.command("setlocal bufhidden=hide")
-  vim.command("setlocal noswapfile")
-  vim.command("setlocal nobuflisted")
+  vim.command("setlocal "+' '.join(options))
 endpython
 
 fun! abeans#start()
@@ -157,6 +182,13 @@ fun! abeans#start()
   py os.system(vim.eval("beansCooker"))
   sleep 1
   nbstart:127.0.0.1:60101
+  if has("netbeans_enabled")
+    let g:abeans['connected'] = 1
+  else
+    let g:abeans['connected'] = 0
+    echoe "Error: vim is not connected to VimProcRunner.py, checkout log files for details."
+    finish
+  endif
 endfun
 
 fun! abeans#exec(ctx)
