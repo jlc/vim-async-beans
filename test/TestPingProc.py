@@ -17,6 +17,7 @@
 import time
 import os
 import sys
+sys.path.append(os.path.dirname(sys.argv[0])+"/../python")
 from LogBeans import *
 
 DEFAULT_LOG_NAME = 'TestPingProc'
