@@ -183,10 +183,18 @@ class ProcRunner(NetBeans, Proxy.Handler):
 
     self.reProtoExecCmd     = re.compile("^##_EXEC_(\d+)_\[(.*)\]_##$")
     self.reProtoKillCmd     = re.compile("^##_KILL_(\d+)_##$")
-    self.reProtoDataCmd      = re.compile("^##_DATA_(\d+)_##(.*)$")
+    self.reProtoDataCmd     = re.compile("^##_DATA_(\d+)_##(.*)$")
+    self.reProtoDataAndPauseCmd     = re.compile("^##_DATA_(\d+)_AND_PAUSE_AFTER_(\d+)_##(.*)$")
+    self.reProtoPauseCmd    = re.compile("^##_PAUSE_##$")
+    self.reProtoContinueCmd = re.compile("^##_CONTINUE_##$")
     self.protoStarted       = "##_STARTED_%d_##"
     self.protoTerminated    = "##_TERMINATED_%d_##"
     self.protoData          = "##_DATA_%d_##%s"
+
+    self.isPause            = False
+    self.pausedMessages     = []
+    self.pauseAfter         = 0 # nb messages to count before pausing
+    self.pauseAfterProcId   = 0 # id of the process to count message from
 
   def hasInsert(self, bufId):
     if not self.buffersInserts.has_key(bufId):
@@ -205,6 +213,23 @@ class ProcRunner(NetBeans, Proxy.Handler):
     insert = self.buffersInserts[bufId].pop()
     self.buffersInserts[bufId].reverse()
     return insert
+
+  def pauseVimMessages(self, after=0, procId=0):
+    log.debug("ProcRunner.pauseVimMessages: pausing")
+    if after > 0:
+      self.pauseAfter = after
+      self.pauseAfterProcId = procId
+    else:
+      self.isPause = True
+
+  def continueVimMessages(self):
+    log.debug("ProcRunner.continueVimMessages: continuing")
+    self.isPause = False
+
+    for msg in self.pausedMessages:
+      self.sendToVim(msg)
+
+    self.pausedMessages = []
 
   def setupInOutBuffers(self):
     # note: when using create(), buffer ids are killed and reopened by vim
@@ -309,10 +334,33 @@ class ProcRunner(NetBeans, Proxy.Handler):
       self.writeRawToProc(id, data)
       return True
 
+    def dataAndPauseCmd(m):
+      try:
+        id = int(m.group(1))
+        pauseAfter = int(m.group(2))
+        data = m.group(3)
+      except:
+        log.exception("ProcRunner.fromVim.dataCmd: exception")
+        return False
+
+      self.pauseVimMessages(after=pauseAfter, procId=id)
+
+      self.writeRawToProc(id, data)
+      return True
+
+    def pauseCmd(m):
+      self.pauseVimMessages(after=0)
+
+    def continueCmd(m):
+      self.continueVimMessages()
+
     regexps = [
       (self.reProtoExecCmd, execCmd),
       (self.reProtoKillCmd, killCmd),
-      (self.reProtoDataCmd, dataCmd)
+      (self.reProtoDataCmd, dataCmd),
+      (self.reProtoDataAndPauseCmd, dataAndPauseCmd),
+      (self.reProtoPauseCmd, pauseCmd),
+      (self.reProtoContinueCmd, continueCmd)
     ]
 
     for (r, cb) in regexps:
@@ -325,19 +373,42 @@ class ProcRunner(NetBeans, Proxy.Handler):
 
   def fromProc(self, desc, data):
     id = self.invProcesses[desc]
+
     log.debug("ProcRunner.fromProc: %d : %s" % (id, data))
     self.sendToVim(self.protoData % (id, data))
 
-  def sendToVim(self, data):
-    def cb(bufId, lnum, column, offset):
-      self.startAtomic()
-      self.insert(self.vimProxyInId, 99999, data.strip())
-      self.initDone(self.vimProxyInId)
-      if bufId >= 0:
-        self.setDot(bufId, offset)
-      self.endAtomic()
+    if self.pauseAfter > 0 and self.pauseAfterProcId == id:
+      self.pauseAfter -= 1
+      if self.pauseAfter == 0:
+        self.isPause = True
 
-    self.getCursor(cb)
+  def sendToVim(self, data):
+    if self.isPause:
+      self.pausedMessages.append(data)
+      return True
+
+    # NOTE: 
+    # when vim receive insert() and initDone(), it set the buffer as visible,
+    # this is not what we want. In order to hide this behavior, either
+    # a) call getCursor() before and then setDot() which is not efficient and 
+    # not always reliable, or 
+    # b) autocmd vim's events to keep track of the current buffer and then set the buffer
+
+    # b)
+    self.startAtomic()
+    self.insert(self.vimProxyInId, 99999, data.strip())
+    self.initDone(self.vimProxyInId)
+    self.endAtomic()
+
+    # a)
+    #def cb(bufId, lnum, column, offset):
+    #  self.startAtomic()
+    #  self.insert(self.vimProxyInId, 99999, data.strip())
+    #  self.initDone(self.vimProxyInId)
+    #  if bufId >= 0:
+    #    self.setDot(bufId, offset)
+    #  self.endAtomic()
+    #self.getCursor(cb)
 
   def send(self, data):
     self.writeRawToVim(data)

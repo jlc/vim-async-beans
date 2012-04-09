@@ -22,6 +22,9 @@ let g:abeans['addon-dir'] = get(g:abeans, 'addon-dir', expand('<sfile>:h:h'))
 let g:abeans['ctxs'] = get(g:abeans, 'ctxs', {})
 let g:abeans['connected'] = get(g:abeans, 'connected', 0)
 
+let g:abeans.currentBuffer = bufnr('%')
+let g:abeans.currentPos = getpos('.')
+
 python << endpython
 import vim
 import sys
@@ -38,6 +41,8 @@ VIM_BUFFER_IN_FILENAME = 'vim-async-beans.in'
 
 EXEC_CMD        = "##_EXEC_%d_[%s]_##"
 KILL_CMD        = "##_KILL_%d_##"
+PAUSE_CMD       = "##_PAUSE_##"
+CONTINUE_CMD    = "##_CONTINUE_##"
 
 RE_STARTED      = re.compile("^##_STARTED_(\d+)_##$")
 RE_TERMINATED   = re.compile("^##_TERMINATED_(\d+)_##$")
@@ -104,18 +109,11 @@ def parse(line):
 # updateBuffer()
 # update given buffer by executing given function
 # take care of setting buffer options
+# note: this reset the message
 def updateBuffer(id, f):
-  preCmds = [
-    "buffer %d" % (id),
-    "setlocal modifiable",
-  ]
-  postCmds = [
-    "setlocal nomodifiable",
-    "buffer %d" % (vim.current.buffer.number)
-  ]
-  vim.command("\n".join(preCmds))
+  vim.command("call setbufvar(%d, '&modifiable', 1)" % (id))
   f()
-  vim.command("\n".join(postCmds))
+  vim.command("call setbufvar(%d, '&modifiable', 0)" % (id))
 
 @CatchAndLogException
 def send(data):
@@ -133,19 +131,29 @@ def startExec(cmd):
 @CatchAndLogException
 def processInput():
   global VIM_BUFFER_IN_ID
+
+  currentBuffer = vim.eval("g:abeans.currentBuffer")
+  ablog().debug("processInput: currentBuffer: %s", currentBuffer)
+
   id = VIM_BUFFER_IN_ID - 1 # array index start at 0
   lines = []
   lines.extend(vim.buffers[id])
 
-  def clear():
-    for i in range(len(vim.buffers[id])):
-      del vim.buffers[id][i]
+  def clear(): vim.buffers[id][:] = None
 
   updateBuffer(VIM_BUFFER_IN_ID, clear)
 
+  cmds = [
+    "buffer %s" % (currentBuffer),
+    "call setpos('.', g:abeans.currentPos)"
+  ]
+  vim.command("\n".join(cmds))
+
+  # parse line after switching buffer
   for line in lines:
     ablog().debug("processInput: parsing: '%s'", line)
     parse(line)
+
 
 @CatchAndLogException
 def findBuffers():
@@ -161,20 +169,27 @@ def findBuffers():
   setBufferOptions(VIM_BUFFER_OUT_ID)
   setBufferOptions(VIM_BUFFER_IN_ID)
 
-  vim.command("buffer %s" % (vim.eval("bufnr('$')")))
+  currentBuffer = vim.eval("bufnr('$')")
+  cmds = [
+    "let g:abeans.currentBuffer = %s" % (currentBuffer),
+    "buffer %s" % (currentBuffer),
+    "redraw"
+  ]
+  vim.command("\n".join(cmds))
 
 _processInput = findBuffers
 
 def setBufferOptions(id):
   options = [
-    "buftype=nofile",
-    "bufhidden=hide",
-    "noswapfile",
-    "nobuflisted",
-    "nomodifiable"
+    ('buftype', "'nofile'"),
+    ('bufhidden', "'hide'"),
+    ('swapfile', "0"),
+    ('buflisted', "0"),
+    ('modifiable', "0"),
+    ('lazyredraw', "1")
   ]
-  vim.command("buffer %d" % (id))
-  vim.command("setlocal "+' '.join(options))
+  cmds = ["call setbufvar(%d, '&%s', %s)" % (id, opt, value) for opt, value in options]
+  vim.command("\n".join(cmds))
 endpython
 
 fun! abeans#start()
@@ -206,6 +221,10 @@ fun! abeans#exec(ctx)
     call abeans#write(self, a:data)
   endfun
 
+  fun! a:ctx.writeAndPause(data, after)
+    call abeans#writeAndPause(self, a:data, a:after)
+  endfun
+
 python << endpython
 global EXEC_CMD
 cmd = vim.eval("a:ctx.cmd")
@@ -223,10 +242,29 @@ fun! abeans#write(ctx, data)
   py send("##_DATA_%s_##%s" % (vim.eval("a:ctx.abeans_id"), vim.eval("a:data")))
 endfun
 
+fun! abeans#writeAndPause(ctx, data, after)
+  py send("##_DATA_%s_AND_PAUSE_AFTER_%s_##%s" % (vim.eval("a:ctx.abeans_id"), vim.eval("a:after"), vim.eval("a:data")))
+endfun
+
 fun! abeans#kill(ctx)
 endfun
 
 fun! abeans#processInput()
   py _processInput()
+endfun
+
+fun! abeans#setCurrentBuffer(event)
+  let g:abeans.currentBuffer = bufnr('%')
+  let g:abeans.currentPos = getpos('.')
+endfun
+
+fun! abeans#pauseMessages()
+  py ablog().debug("abeans#pauseMessages: pausing")
+  py send(PAUSE_CMD)
+endfun
+
+fun! abeans#continueMessages()
+  py ablog().debug("abeans#continueMessages: continuing")
+  py send(CONTINUE_CMD)
 endfun
 

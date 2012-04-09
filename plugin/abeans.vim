@@ -22,5 +22,18 @@ command! -nargs=0 AsyncBeans call abeans#start()
 
 augroup ASYNCBEANS
   au!
+
+  " setCurrentBuffer: keep tracking where we are
+  " DEBUG: pass event name for debugging only
+  " BufEnter is catched when entering into vim-async-beans.*
+  " If necessary, we should find a way to exclude those ones
+  autocmd BufNewFile * :call abeans#setCurrentBuffer("BufNewFile")
+  autocmd BufAdd * :call abeans#setCurrentBuffer("BufAdd")
+  autocmd BufCreate * :call abeans#setCurrentBuffer("BufCreate")
+  autocmd BufFilePost * :call abeans#setCurrentBuffer("BufFilePost")
+  autocmd BufNew * :call abeans#setCurrentBuffer("BufNew")
+  autocmd TabEnter * :call abeans#setCurrentBuffer("TabEnter")
+  autocmd CursorMoved,CursorMovedI * :call abeans#setCurrentBuffer("CursorMoved")
+
   autocmd BufReadPost vim-async-beans.in :call abeans#processInput()
 augroup end
