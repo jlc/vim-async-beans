@@ -26,10 +26,19 @@ def initLog(mainlogger, filename, stdout = False):
   formatter = logging.Formatter(fmt=FORMAT)
 
   handlers = []
-  handlers.append(logging.FileHandler(filename))
 
-  if stdout:
-    handlers.append(logging.StreamHandler())
+  fileHandler = None
+  try:
+    fileHandler = logging.FileHandler(filename)
+    handlers.append(logging.FileHandler(filename))
+  except: pass
+
+  streamHandler = None
+  try:
+    if stdout:
+      streamHandler = logging.StreamHandler()
+      handlers.append(logging.StreamHandler())
+  except: pass
 
   for h in handlers:
     h.setFormatter(formatter)
