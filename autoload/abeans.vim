@@ -50,8 +50,6 @@ RE_DATA         = re.compile("^##_DATA_(\d+)_##(.*)$")
 
 NEXT_CTX_ID = 1
 
-initLog('abeans', 'abeans.vim.log')
-
 # When using a 'log' variable, we may refer to another one defined somewhere else
 def ablog(): return logging.getLogger('abeans')
 
@@ -193,6 +191,7 @@ def setBufferOptions(id):
 endpython
 
 fun! abeans#start()
+  py initLog('abeans', 'abeans.vim.log')
   let beansCooker = g:abeans['addon-dir'] . '/python/VimProcRunner.py -g'
   py os.system(vim.eval("beansCooker"))
   sleep 1
