@@ -50,6 +50,8 @@ RE_DATA         = re.compile("^##_DATA_(\d+)_##(.*)$")
 
 NEXT_CTX_ID = 1
 
+PENDING_MSGS    = [] # pending messages sent before we got in/out buffers
+
 # When using a 'log' variable, we may refer to another one defined somewhere else
 def ablog(): return logging.getLogger('abeans')
 
@@ -115,8 +117,12 @@ def updateBuffer(id, f):
 
 @CatchAndLogException
 def send(data):
-  doSend = lambda: vim.buffers[VIM_BUFFER_OUT_ID - 1].append(data)
-  updateBuffer(VIM_BUFFER_OUT_ID, doSend)
+  global PENDING_MSGS
+  if VIM_BUFFER_OUT_ID == 0:
+    PENDING_MSGS.append(data)
+  else:
+    doSend = lambda: vim.buffers[VIM_BUFFER_OUT_ID - 1].append(data)
+    updateBuffer(VIM_BUFFER_OUT_ID, doSend)
 
 @CatchAndLogException
 def startExec(cmd):
@@ -155,7 +161,7 @@ def processInput():
 
 @CatchAndLogException
 def findBuffers():
-  global _processInput, VIM_BUFFER_OUT_ID, VIM_BUFFER_IN_ID
+  global _processInput, PENDING_MSGS, VIM_BUFFER_OUT_ID, VIM_BUFFER_IN_ID
   _processInput = processInput
   for buffer in vim.buffers:
     if buffer.name == None: continue
@@ -174,6 +180,11 @@ def findBuffers():
     "redraw"
   ]
   vim.command("\n".join(cmds))
+
+  if len(PENDING_MSGS) > 0:
+    for data in PENDING_MSGS:
+      send(data)
+    PENDING_MSGS = []
 
 _processInput = findBuffers
 
