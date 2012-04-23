@@ -158,7 +158,7 @@ class NetBeansParser:
         return False
 
       # Vim is escaping double quotes when sending, we must then unescape
-      text = text.replace("\\\"", "\"")
+      text = text.replace("\\\"", "\"").replace("\\\\", "\\")
 
       f = lambda: self.eventsHandler.onInsert(bufId, offset, text)
       self.eventStack.add(f)
@@ -321,7 +321,7 @@ class NetBeans(NetBeansEvents, NetBeansCommands, NetBeansFunctions):
 
   def insert(self, bufId, offset, text):
     # Vim expect text to be sent within double quotes, we must then escape them
-    text = text.replace('"', '\\"')
+    text = text.replace("\\", "\\\\").replace('"', '\\"')
     (seq, cmd) = self.formatFunction(bufId, 'insert', str(offset)+' '+'"'+text+'"')
     self.send(cmd)
     f = lambda: self.cmdInsert(bufId, offset, text)

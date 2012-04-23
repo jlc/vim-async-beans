@@ -82,11 +82,11 @@ def onData(m):
   except Exception as e:
     ablog().exception("onData: match group exception")
  
+  data = data.replace("\\", "\\\\").replace('"', '\\\"') + "\n"
+
   ablog().debug("onData: %d : %s", id, data)
 
-  data = data.replace('"', '\\\"') + "\n"
-  vim.command("let on_data_result_%d = \"%s\"" % (id, data))
-  vim.command("call g:abeans.ctxs[%d].receive(on_data_result_%d)" % (id, id))
+  vim.command("call g:abeans.ctxs[%d].receive(\"%s\")" % (id, data))
 
 def parse(line):
   global RE_STARTED, RE_TERMINATED, RE_DATA
