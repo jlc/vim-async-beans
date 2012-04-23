@@ -541,7 +541,7 @@ def main():
   if options.log != None:
     logfile = options.log
 
-  initLog('', logfile)
+  LogSetup().setup('', logfile)
 
   port = DEFAULT_NETBEANS_PORT
   if options.port != None:

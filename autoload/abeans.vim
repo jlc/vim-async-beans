@@ -191,7 +191,7 @@ def setBufferOptions(id):
 endpython
 
 fun! abeans#start()
-  py initLog('abeans', 'abeans.vim.log')
+  py LogSetup().setup('abeans', 'abeans.vim.log', False)
   let beansCooker = g:abeans['addon-dir'] . '/python/VimProcRunner.py -g'
   py os.system(vim.eval("beansCooker"))
   sleep 1

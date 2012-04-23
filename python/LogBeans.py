@@ -16,43 +16,100 @@
 
 import logging
 
-def initLog(mainlogger, filename, stdout = False):
-  log = logging.getLogger(mainlogger)
+# TODO: part of ensime-common/src/main/python/Helper.py
 
-  FORMAT =    '%(asctime)s %(levelname)s [%(name)s] '
-  FORMAT +=   '%(message)s'
-  #FORMAT +=   '%(message)s (%(funcName)s(), %(filename)s:%(lineno)d)'
+#
+# Simple Singleton decorator
+#
+# Be carefull: does not call parents initialization
+def SimpleSingleton(cls):
+  instances = {}
+  def instance():
+    if cls not in instances:
+      instances[cls] = cls()
+    return instances[cls]
+  return instance
 
-  formatter = logging.Formatter(fmt=FORMAT)
+@SimpleSingleton
+class LogSetup:
 
-  handlers = []
+  FORMAT = '%(asctime)s %(levelname)s [%(name)s] %(message)s' # (%(funcName)s(), %(filename)s:%(lineno)d)'
 
-  fileHandler = None
-  try:
-    fileHandler = logging.FileHandler(filename)
-    handlers.append(logging.FileHandler(filename))
-  except: pass
+  def __init__(self):
+    self.handlers = {} # {name: handler}
 
-  streamHandler = None
-  try:
+  def setup(self, loggerName, logFilename = None, stdout = False):
+    self.initLogger(loggerName)
+
+    if logFilename != None and logFilename != '':
+      self.addFileHandler(loggerName, logFilename)
+    else:
+      self.removeFileHandler(loggerName)
+
     if stdout:
-      streamHandler = logging.StreamHandler()
-      handlers.append(logging.StreamHandler())
-  except: pass
+      self.addStreamHandler(loggerName)
+    else:
+      self.removeStreamHandler(loggerName)
 
-  for h in handlers:
-    h.setFormatter(formatter)
-    log.addHandler(h)
+  def loggerNames(self):
+    for name in self.handlers.keys():
+      yield name
 
-  log.setLevel(logging.DEBUG)
-  log.propagate = False
+  def hasLogger(self):
+    if len(self.handlers) > 0: return True
+    return False
+
+  def initLogger(self, name):
+    log = logging.getLogger(name)
+
+    if not self.handlers.has_key(name):
+      self.handlers[name] = {}
+
+      log.setLevel(logging.DEBUG)
+      log.propagate = False
+
+  def addHandler(self, loggerName, handlerName, handlerCreator):
+    if self.handlers.has_key(loggerName) and not self.handlers[loggerName].has_key(handlerName):
+      try:
+        handler = handlerCreator()
+        handler.setFormatter(logging.Formatter(fmt=self.FORMAT))
+        self.handlers[loggerName][handlerName] = handler
+
+        logging.getLogger(loggerName).addHandler(handler)
+      except Exception as e:
+        print("LogSetup.addHandler: exception while adding handler '%s' for logger '%s': %s" % (handlerName, loggerName, str(e)))
+
+  def removeHandler(self, loggerName, handlerName):
+    if self.handlers.has_key(loggerName) and self.handlers[loggerName].has_key(handlerName):
+      logging.getLogger(loggerName).removeHandler(self.handlers[loggerName][handlerName])
+      del self.handlers[loggerName][handlerName]
+
+  def addStreamHandler(self, loggerName):
+    self.addHandler(loggerName, 'streamHandler', lambda: logging.StreamHandler())
+
+  def removeStreamHandler(self, loggerName):
+    self.removeHandler(loggerName, 'streamHandler')
+
+  def addFileHandler(self, loggerName, logFilename):
+    self.addHandler(loggerName, 'fileHandler', lambda: logging.FileHandler(logFilename))
+
+  def removeFileHandler(self, loggerName):
+    self.removeHandler(loggerName, 'fileHandler')
+
 
 def CatchAndLogException(mth):
   def methodWrapper(*args, **kwargs):
-    log = logging.getLogger('abeans')
-    try: mth(*args, **kwargs)
+    # forward exception on all registered loggers or use a basic configuration
+    if LogSetup().hasLogger():
+      logs = [logging.getLogger(name) for name in LogSetup().loggerNames()]
+    else:
+      logging.basicConfig()
+      logs = [logging.getLogger()]
+    try:
+      return mth(*args, **kwargs)
     except:
-      log.exception("[ CatchAndLogException ]")
+      for log in logs:
+        log.exception("[ CatchAndLogException ]")
 
   return methodWrapper
 
