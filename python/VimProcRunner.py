@@ -23,6 +23,7 @@ import re
 import socket
 import select
 import termios
+import tty
 from optparse import OptionParser
 
 from NetBeans import *
@@ -264,10 +265,13 @@ class ProcRunner(NetBeans, Proxy.Handler):
       os._exit(1)
       return False
 
-    # disable echo
-    attr = termios.tcgetattr(fd)
-    attr[3] = attr[3] & ~termios.ECHO
-    termios.tcsetattr(fd, termios.TCSANOW, attr)
+    # daddy
+
+    # set raw mode
+    # several reasons:
+    # a) suppress echos
+    # b) prevents size limitation while sending data to child processes
+    tty.setraw(fd)
 
     self.processes[id] = fd
     self.invProcesses[fd] = id
@@ -287,6 +291,7 @@ class ProcRunner(NetBeans, Proxy.Handler):
   def writeRawToProc(self, id, data):
     log.debug("ProcRunner.writeRawToProc: data: '%s'", data.strip())
     if data[-1:] != "\\n": data += "\n"
+
     try:
       desc = self.processes[id]
       os.write(desc, data)
